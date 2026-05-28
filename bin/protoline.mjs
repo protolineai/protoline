@@ -282,7 +282,8 @@ export function codexSkillPreviewLines(options, env = process.env) {
   return [
     "Install local Codex skill:",
     `  ${codexSkillPath(env)}`,
-    "Restart Codex after installing or updating skills."
+    "Restart Codex after installing or updating skills.",
+    "Codex skills are not slash commands; use $protoline or ask in natural language."
   ];
 }
 
@@ -294,7 +295,7 @@ export function claudeSkillPreviewLines(options, env = process.env) {
   return [
     "Install local Claude skill:",
     `  ${claudeSkillPath(env)}`,
-    "Restart Claude Code if the new skill does not appear."
+    "Restart Claude Code if the new /protoline skill command does not appear."
   ];
 }
 
@@ -313,7 +314,11 @@ export function installCodexSkill(options, env = process.env) {
   const targetPath = codexSkillPath(env);
   mkdirSync(dirname(targetPath), { recursive: true });
   writeFileSync(targetPath, readFileSync(CODEX_SKILL_SOURCE_URL, "utf8"));
-  return `Codex skill installed: ${targetPath}\nRestart Codex after installing or updating skills.`;
+  return [
+    `Codex skill installed: ${targetPath}`,
+    "Restart Codex after installing or updating skills.",
+    "Codex skills are not slash commands; use $protoline or ask in natural language."
+  ].join("\n");
 }
 
 export function installClaudeSkill(options, env = process.env) {
@@ -324,7 +329,7 @@ export function installClaudeSkill(options, env = process.env) {
   const targetPath = claudeSkillPath(env);
   mkdirSync(dirname(targetPath), { recursive: true });
   writeFileSync(targetPath, readFileSync(CODEX_SKILL_SOURCE_URL, "utf8"));
-  return `Claude skill installed: ${targetPath}\nRestart Claude Code if the new skill does not appear.`;
+  return `Claude skill installed: ${targetPath}\nRestart Claude Code if the new /protoline skill command does not appear.`;
 }
 
 export function installAgentSkills(options, env = process.env) {
@@ -397,7 +402,6 @@ function install(options) {
       encoding: "utf8"
     });
 
-    outputs.push(`$ ${entry.display}`);
     if (result.stdout) {
       outputs.push(redactSecrets(result.stdout.trimEnd(), options));
     }

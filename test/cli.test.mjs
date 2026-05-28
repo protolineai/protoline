@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -142,6 +142,35 @@ test("install dry run includes Claude skill for Claude client", () => {
   assert.equal(result.code, 0);
   assert.match(result.stdout, /Install local Claude skill:/);
   assert.doesNotMatch(result.stdout, /Install local Codex skill:/);
+});
+
+test("install execution output does not echo the command being run", () => {
+  const previousHome = process.env.HOME;
+  const previousCodexHome = process.env.CODEX_HOME;
+  const home = mkdtempSync(join(tmpdir(), "protoline-home-"));
+  process.env.HOME = home;
+  process.env.CODEX_HOME = join(home, "codex");
+  mkdirSync(process.env.CODEX_HOME, { recursive: true });
+
+  try {
+    const result = run(parseArgs(["install", "--client", "codex", "--no-skills"]));
+
+    assert.equal(result.code, 0);
+    assert.doesNotMatch(result.stdout, /\$ codex mcp add/);
+    assert.match(result.stdout, /Added global MCP server 'protoline'\./);
+  } finally {
+    if (previousHome === undefined) {
+      delete process.env.HOME;
+    } else {
+      process.env.HOME = previousHome;
+    }
+
+    if (previousCodexHome === undefined) {
+      delete process.env.CODEX_HOME;
+    } else {
+      process.env.CODEX_HOME = previousCodexHome;
+    }
+  }
 });
 
 test("codex skill installs into CODEX_HOME", () => {

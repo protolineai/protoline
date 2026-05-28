@@ -41,6 +41,10 @@ When the home variables are not set, the defaults are `~/.codex` and
 `~/.claude`. Restart Codex after installing or updating Codex skills. Restart
 Claude Code if the new skill does not appear.
 
+Codex skills are model-invoked context, not `/` commands. In Codex, use
+`$protoline` or natural language such as "Show Protoline help." Claude Code may
+expose installed skills through `/protoline`.
+
 Skills and client slash commands are optional shortcuts. Protoline still works
 through MCP tools when no companion skill is installed.
 
