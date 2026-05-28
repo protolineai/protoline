@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, readFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
 import test from "node:test";
 import {
   CLAUDE_SKILL_NAME,
@@ -147,9 +147,16 @@ test("install dry run includes Claude skill for Claude client", () => {
 test("install execution output does not echo the command being run", () => {
   const previousHome = process.env.HOME;
   const previousCodexHome = process.env.CODEX_HOME;
+  const previousPath = process.env.PATH;
   const home = mkdtempSync(join(tmpdir(), "protoline-home-"));
+  const bin = join(home, "bin");
+  const fakeCodex = join(bin, "codex");
+  mkdirSync(bin, { recursive: true });
+  writeFileSync(fakeCodex, "#!/bin/sh\necho \"Added global MCP server 'protoline'.\"\n");
+  chmodSync(fakeCodex, 0o755);
   process.env.HOME = home;
   process.env.CODEX_HOME = join(home, "codex");
+  process.env.PATH = `${bin}${delimiter}${previousPath ?? ""}`;
   mkdirSync(process.env.CODEX_HOME, { recursive: true });
 
   try {
@@ -169,6 +176,12 @@ test("install execution output does not echo the command being run", () => {
       delete process.env.CODEX_HOME;
     } else {
       process.env.CODEX_HOME = previousCodexHome;
+    }
+
+    if (previousPath === undefined) {
+      delete process.env.PATH;
+    } else {
+      process.env.PATH = previousPath;
     }
   }
 });
