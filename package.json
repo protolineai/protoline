@@ -1,0 +1,33 @@
+{
+  "name": "@protoline/protoline",
+  "version": "0.1.0",
+  "description": "Protoline agent setup CLI.",
+  "type": "module",
+  "bin": {
+    "protoline": "bin/protoline.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/protolineai/protoline.git"
+  },
+  "bugs": {
+    "url": "https://github.com/protolineai/protoline/issues"
+  },
+  "homepage": "https://docs.protoline.ai/integrations/mcp/",
+  "files": [
+    "bin",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "audit:prod": "npm audit --omit=dev",
+    "pack:check": "npm pack --dry-run"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "license": "UNLICENSED"
+}
