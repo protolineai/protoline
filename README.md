@@ -5,6 +5,8 @@ Protoline agent setup CLI for the hosted Protoline MCP server.
 ```sh
 npx -y @protoline/protoline login
 export PROTOLINE_MCP_TOKEN="plpat_..."
+npx -y @protoline/protoline install --client codex
+npx -y @protoline/protoline install --client claude
 npx -y @protoline/protoline install --client all
 ```
 
