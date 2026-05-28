@@ -1,6 +1,6 @@
 {
   "name": "@protoline/protoline",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Protoline agent setup CLI.",
   "type": "module",
   "bin": {
@@ -16,7 +16,8 @@
   "homepage": "https://docs.protoline.ai/integrations/mcp/",
   "files": [
     "bin",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "scripts": {
     "test": "node --test test/*.test.mjs",
@@ -29,5 +30,5 @@
   "publishConfig": {
     "access": "public"
   },
-  "license": "UNLICENSED"
+  "license": "Apache-2.0"
 }

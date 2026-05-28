@@ -16,6 +16,7 @@ npm pack --dry-run
 Inspect the dry-run tarball output. The package should contain only:
 
 - `README.md`
+- `LICENSE`
 - `bin/protoline.mjs`
 - `package.json`
 

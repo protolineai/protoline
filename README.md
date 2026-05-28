@@ -29,6 +29,10 @@ not make skills or slash commands mandatory.
 Skills and client slash commands are optional. Protoline still works through MCP
 tools when no companion skill is installed.
 
+## License
+
+Apache-2.0.
+
 ## Release checks
 
 Before publishing:

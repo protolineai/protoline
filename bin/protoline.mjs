@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
+import { realpathSync } from "node:fs";
 import { platform } from "node:os";
 import { pathToFileURL } from "node:url";
 
@@ -324,8 +325,12 @@ function valueAfter(args, index, option) {
   return value;
 }
 
+export function isEntrypointPath(argvPath, moduleUrl = import.meta.url) {
+  return Boolean(argvPath) && moduleUrl === pathToFileURL(realpathSync(argvPath)).href;
+}
+
 function isEntrypoint() {
-  return process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+  return isEntrypointPath(process.argv[1]);
 }
 
 if (isEntrypoint()) {

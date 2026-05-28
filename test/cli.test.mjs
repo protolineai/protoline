@@ -5,6 +5,7 @@ import {
   buildInstallCommands,
   doctorReport,
   executionArgs,
+  isEntrypointPath,
   loginMessage,
   parseArgs,
   redactSecrets,
@@ -94,6 +95,13 @@ test("redacts token values from command output", () => {
   );
 
   assert.equal(text, "stored Authorization: Bearer [TOKEN]");
+});
+
+test("entrypoint detection resolves npm bin symlinks", () => {
+  const target = new URL("../bin/protoline.mjs", import.meta.url);
+  const path = target.pathname;
+
+  assert.equal(isEntrypointPath(path, target.href), true);
 });
 
 test("unknown command fails", () => {
