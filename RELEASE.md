@@ -46,3 +46,6 @@ git push origin v0.1.1
 ```
 
 The workflow uses OIDC and does not require an npm token.
+
+Do not move an already pushed public version tag. If a trusted-publishing run
+fails before publication, create a new patch version and tag.

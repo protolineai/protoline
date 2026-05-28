@@ -11,24 +11,31 @@ export const DEFAULT_TOKEN_ENV = "PROTOLINE_MCP_TOKEN";
 export const DEFAULT_INVOCATION = "npx -y @protoline/protoline";
 export const CODEX_SKILL_NAME = "protoline";
 export const CLAUDE_SKILL_NAME = "protoline";
+export const DEFAULT_OAUTH_SCOPES = [
+  "project:read",
+  "project:create",
+  "project:write",
+  "deployment:write"
+];
 
 const CODEX_SKILL_SOURCE_URL = new URL("../skills/protoline/SKILL.md", import.meta.url);
 
 const helpText = `Protoline agent setup
 
 Usage:
-  protoline login [--no-open]
-  protoline install [--client codex|claude|all] [--dry-run] [--no-skills]
+  protoline login [--client codex|claude|all] [--manual-token] [--no-open]
+  protoline install [--client codex|claude|all] [--dry-run] [--no-skills] [--pat]
   protoline doctor
   protoline help
 
 Common path:
   1. ${DEFAULT_INVOCATION} login
-  2. export PROTOLINE_MCP_TOKEN="plpat_..."
-  3. ${DEFAULT_INVOCATION} install --client codex
+  2. Use Protoline from Codex or Claude Code
 
 Notes:
   - Protoline MCP is hosted at ${DEFAULT_MCP_URL}
+  - OAuth is the default for hosted MCP.
+  - PAT setup is available with install --pat or login --manual-token.
   - Codex and Claude install small local skills by default; MCP tools still work without them.
 `;
 
@@ -43,7 +50,9 @@ export function parseArgs(argv) {
     open: true,
     tokenEnv: DEFAULT_TOKEN_ENV,
     mcpUrl: DEFAULT_MCP_URL,
-    tokenUrl: DEFAULT_TOKEN_URL
+    tokenUrl: DEFAULT_TOKEN_URL,
+    pat: false,
+    manualToken: false
   };
 
   for (let index = 0; index < rest.length; index += 1) {
@@ -124,6 +133,17 @@ export function parseArgs(argv) {
       continue;
     }
 
+    if (arg === "--pat") {
+      options.pat = true;
+      continue;
+    }
+
+    if (arg === "--manual-token") {
+      options.manualToken = true;
+      options.pat = true;
+      continue;
+    }
+
     throw new Error(`Unknown option: ${arg}`);
   }
 
@@ -145,6 +165,23 @@ export function selectedClients(client) {
 export function buildInstallCommands(options) {
   return selectedClients(options.client).map((client) => {
     if (client === "codex") {
+      if (!options.pat) {
+        return {
+          client,
+          command: "codex",
+          args: [
+            "mcp",
+            "add",
+            "protoline",
+            "--url",
+            options.mcpUrl,
+            "--oauth-resource",
+            options.mcpUrl
+          ],
+          display: `codex mcp add protoline --url ${options.mcpUrl} --oauth-resource ${options.mcpUrl}`
+        };
+      }
+
       return {
         client,
         command: "codex",
@@ -158,6 +195,15 @@ export function buildInstallCommands(options) {
           options.tokenEnv
         ],
         display: `codex mcp add protoline --url ${options.mcpUrl} --bearer-token-env-var ${options.tokenEnv}`
+      };
+    }
+
+    if (!options.pat) {
+      return {
+        client,
+        command: "claude",
+        args: ["mcp", "add", "--transport", "http", "protoline", options.mcpUrl],
+        display: `claude mcp add --transport http protoline ${options.mcpUrl}`
       };
     }
 
@@ -180,7 +226,7 @@ export function buildInstallCommands(options) {
 }
 
 export function executionArgs(entry, options, env = process.env) {
-  if (entry.client !== "claude") {
+  if (!options.pat || entry.client !== "claude") {
     return entry.args;
   }
 
@@ -208,8 +254,24 @@ export function redactSecrets(text, options, env = process.env) {
 }
 
 export function loginMessage(options) {
+  if (!options.manualToken) {
+    return [
+      "Protoline MCP uses OAuth by default.",
+      "",
+      "This command installs the hosted MCP server for the selected client and starts OAuth where the client exposes a login command.",
+      "",
+      "Codex OAuth scopes:",
+      `  ${DEFAULT_OAUTH_SCOPES.join(",")}`,
+      "",
+      "Claude Code starts authentication from inside Claude Code after the HTTP MCP server is installed.",
+      "",
+      "For older clients, run:",
+      `  ${DEFAULT_INVOCATION} login --manual-token`
+    ].join("\n");
+  }
+
   return [
-    "Create a Protoline personal access token:",
+    "Create a Protoline personal access token for older MCP clients:",
     `  ${options.tokenUrl}`,
     "",
     "Recommended scopes:",
@@ -222,8 +284,8 @@ export function loginMessage(options) {
     `  export ${options.tokenEnv}="plpat_..."`,
     "",
     "After that, run:",
-    `  ${DEFAULT_INVOCATION} install --client codex`,
-    `  ${DEFAULT_INVOCATION} install --client claude`
+    `  ${DEFAULT_INVOCATION} install --client codex --pat`,
+    `  ${DEFAULT_INVOCATION} install --client claude --pat`
   ].join("\n");
 }
 
@@ -231,7 +293,8 @@ export function doctorReport(options, env = process.env) {
   const lines = [
     "Protoline doctor",
     `MCP URL: ${options.mcpUrl}`,
-    `${options.tokenEnv}: ${env[options.tokenEnv] ? "set" : "not set"}`
+    "Hosted MCP auth: OAuth default",
+    `${options.tokenEnv}: ${env[options.tokenEnv] ? "set (PAT fallback)" : "not set (PAT fallback)"}`
   ];
 
   for (const client of ["codex", "claude"]) {
@@ -245,6 +308,13 @@ export function doctorReport(options, env = process.env) {
 }
 
 export function tokenSetupLines(options, env = process.env) {
+  if (!options.pat) {
+    return [
+      "OAuth setup does not require a PROTOLINE_MCP_TOKEN.",
+      "Use --pat only for older clients that need a personal access token."
+    ];
+  }
+
   if (env[options.tokenEnv]) {
     return [`${options.tokenEnv} is set.`];
   }
@@ -336,6 +406,17 @@ export function installAgentSkills(options, env = process.env) {
   return [installCodexSkill(options, env), installClaudeSkill(options, env)].filter(Boolean);
 }
 
+export function buildLoginCommands(options) {
+  return selectedClients(options.client)
+    .filter((client) => client === "codex")
+    .map((client) => ({
+      client,
+      command: "codex",
+      args: ["mcp", "login", "protoline", "--scopes", DEFAULT_OAUTH_SCOPES.join(",")],
+      display: `codex mcp login protoline --scopes ${DEFAULT_OAUTH_SCOPES.join(",")}`
+    }));
+}
+
 export function run(options) {
   switch (options.command) {
     case "help":
@@ -343,11 +424,11 @@ export function run(options) {
     case "-h":
       return { code: 0, stdout: helpText };
     case "login":
-      if (options.open) {
+      if (options.manualToken && options.open) {
         openUrl(options.tokenUrl);
       }
 
-      return { code: 0, stdout: loginMessage(options) };
+      return options.manualToken ? { code: 0, stdout: loginMessage(options) } : login(options);
     case "install":
       return install(options);
     case "doctor":
@@ -358,6 +439,69 @@ export function run(options) {
         stderr: `Unknown command: ${options.command}\n\n${helpText}`
       };
   }
+}
+
+function login(options) {
+  const outputs = [loginMessage(options), ""];
+  const installResult = install({ ...options, pat: false });
+
+  if (installResult.stdout) {
+    outputs.push(installResult.stdout);
+  }
+
+  if (installResult.code !== 0) {
+    return {
+      code: installResult.code,
+      stdout: outputs.join("\n"),
+      stderr: installResult.stderr
+    };
+  }
+
+  if (options.dryRun || !options.execute) {
+    const loginCommands = buildLoginCommands(options);
+
+    if (loginCommands.length > 0) {
+      outputs.push("", "Then authenticate:", ...loginCommands.map((entry) => `  ${entry.display}`));
+    }
+
+    if (selectedClients(options.client).includes("claude")) {
+      outputs.push(
+        "Claude Code will start authentication inside Claude Code when Protoline MCP needs authentication."
+      );
+    }
+
+    return { code: 0, stdout: outputs.filter(Boolean).join("\n") };
+  }
+
+  for (const entry of buildLoginCommands(options)) {
+    const result = spawnSync(entry.command, entry.args, {
+      stdio: "pipe",
+      encoding: "utf8"
+    });
+
+    if (result.stdout) {
+      outputs.push(result.stdout.trimEnd());
+    }
+
+    if (result.stderr) {
+      outputs.push(result.stderr.trimEnd());
+    }
+
+    if (result.status !== 0) {
+      return {
+        code: result.status ?? 1,
+        stdout: outputs.join("\n")
+      };
+    }
+  }
+
+  if (selectedClients(options.client).includes("claude")) {
+    outputs.push(
+      "Claude Code installed. Open Claude Code and authenticate Protoline when the MCP server is shown as needing authentication."
+    );
+  }
+
+  return { code: 0, stdout: outputs.filter(Boolean).join("\n") };
 }
 
 function install(options) {

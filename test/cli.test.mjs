@@ -6,9 +6,11 @@ import test from "node:test";
 import {
   CLAUDE_SKILL_NAME,
   CODEX_SKILL_NAME,
+  DEFAULT_OAUTH_SCOPES,
   DEFAULT_INVOCATION,
   DEFAULT_MCP_URL,
   agentSkillPreviewLines,
+  buildLoginCommands,
   buildInstallCommands,
   claudeSkillPath,
   claudeSkillPreviewLines,
@@ -31,7 +33,8 @@ test("builds Codex and Claude install commands", () => {
   const commands = buildInstallCommands({
     client: "all",
     mcpUrl: DEFAULT_MCP_URL,
-    tokenEnv: "PROTOLINE_MCP_TOKEN"
+    tokenEnv: "PROTOLINE_MCP_TOKEN",
+    pat: false
   });
 
   assert.deepEqual(
@@ -39,8 +42,21 @@ test("builds Codex and Claude install commands", () => {
     ["codex", "claude"]
   );
   assert.equal(commands[0].command, "codex");
-  assert.ok(commands[0].args.includes("--bearer-token-env-var"));
+  assert.ok(commands[0].args.includes("--oauth-resource"));
+  assert.ok(!commands[0].args.includes("--bearer-token-env-var"));
   assert.equal(commands[1].command, "claude");
+  assert.ok(!commands[1].args.some((arg) => arg.includes("Authorization: Bearer")));
+});
+
+test("builds PAT fallback install commands", () => {
+  const commands = buildInstallCommands({
+    client: "all",
+    mcpUrl: DEFAULT_MCP_URL,
+    tokenEnv: "PROTOLINE_MCP_TOKEN",
+    pat: true
+  });
+
+  assert.ok(commands[0].args.includes("--bearer-token-env-var"));
   assert.ok(commands[1].args.includes("Authorization: Bearer $PROTOLINE_MCP_TOKEN"));
 });
 
@@ -63,6 +79,14 @@ test("parses install options", () => {
   assert.equal(options.skills, true);
   assert.equal(options.tokenEnv, "TOKEN");
   assert.equal(options.mcpUrl, "https://example.test/mcp");
+  assert.equal(options.pat, false);
+});
+
+test("parses PAT and manual-token fallback options", () => {
+  assert.equal(parseArgs(["install", "--pat"]).pat, true);
+  const login = parseArgs(["login", "--manual-token"]);
+  assert.equal(login.manualToken, true);
+  assert.equal(login.pat, true);
 });
 
 test("install executes by default and supports dry run", () => {
@@ -87,28 +111,48 @@ test("login opens the browser by default and supports no-open", () => {
   assert.equal(parseArgs(["login", "--no-open"]).open, false);
 });
 
-test("login message points users to token creation without storing secrets", () => {
+test("login message points users to OAuth by default", () => {
   const text = loginMessage({
     tokenUrl: "https://example.test/tokens",
-    tokenEnv: "TOKEN"
+    tokenEnv: "TOKEN",
+    manualToken: false
+  });
+
+  assert.match(text, /OAuth by default/);
+  assert.match(text, new RegExp(DEFAULT_OAUTH_SCOPES.join(",")));
+  assert.doesNotMatch(text, /export TOKEN/);
+});
+
+test("manual-token login message points users to token creation without storing secrets", () => {
+  const text = loginMessage({
+    tokenUrl: "https://example.test/tokens",
+    tokenEnv: "TOKEN",
+    manualToken: true
   });
 
   assert.match(text, /https:\/\/example\.test\/tokens/);
   assert.match(text, /export TOKEN="plpat_\.\.\."/);
-  assert.ok(text.includes(`${DEFAULT_INVOCATION} install --client codex`));
-  assert.ok(text.includes(`${DEFAULT_INVOCATION} install --client claude`));
+  assert.ok(text.includes(`${DEFAULT_INVOCATION} install --client codex --pat`));
+  assert.ok(text.includes(`${DEFAULT_INVOCATION} install --client claude --pat`));
   assert.doesNotMatch(text, /\n  protoline install --client/);
 });
 
-test("install setup message reflects exported token state", () => {
-  assert.deepEqual(tokenSetupLines({ tokenEnv: "TOKEN" }, { TOKEN: "plpat_test" }), [
+test("PAT install setup message reflects exported token state", () => {
+  assert.deepEqual(tokenSetupLines({ tokenEnv: "TOKEN", pat: true }, { TOKEN: "plpat_test" }), [
     "TOKEN is set."
   ]);
 
-  assert.deepEqual(tokenSetupLines({ tokenEnv: "TOKEN" }, {}), [
+  assert.deepEqual(tokenSetupLines({ tokenEnv: "TOKEN", pat: true }, {}), [
     "Set TOKEN before adding Protoline MCP:",
     "  export TOKEN=\"plpat_...\"",
     "If you already set it, make sure it is exported in this shell."
+  ]);
+});
+
+test("OAuth install setup message does not require a token", () => {
+  assert.deepEqual(tokenSetupLines({ tokenEnv: "TOKEN", pat: false }, {}), [
+    "OAuth setup does not require a PROTOLINE_MCP_TOKEN.",
+    "Use --pat only for older clients that need a personal access token."
   ]);
 });
 
@@ -127,10 +171,10 @@ test("install dry run prints commands without executing them", () => {
   );
 
   assert.equal(result.code, 0);
-  assert.match(result.stdout, /Set TOKEN before adding Protoline MCP:/);
+  assert.match(result.stdout, /OAuth setup does not require/);
   assert.match(
     result.stdout,
-    /codex mcp add protoline --url https:\/\/example\.test\/mcp --bearer-token-env-var TOKEN/
+    /codex mcp add protoline --url https:\/\/example\.test\/mcp --oauth-resource https:\/\/example\.test\/mcp/
   );
   assert.match(result.stdout, /Install local Codex skill:/);
   assert.match(result.stdout, /Run without --dry-run to install from this CLI\./);
@@ -244,7 +288,7 @@ test("install dry run reports exported token state", () => {
     );
 
     assert.equal(result.code, 0);
-    assert.match(result.stdout, /TOKEN is set\./);
+    assert.match(result.stdout, /OAuth setup does not require/);
     assert.doesNotMatch(result.stdout, /export TOKEN=/);
   } finally {
     if (previous === undefined) {
@@ -264,21 +308,44 @@ test("doctor reports token env state", () => {
     { TOKEN: "plpat_test" }
   );
 
-  assert.match(text, /TOKEN: set/);
+  assert.match(text, /TOKEN: set \(PAT fallback\)/);
   assert.match(text, /codex skill: /);
   assert.match(text, /claude skill: /);
 });
 
-test("Claude execution args use the token value for direct process execution", () => {
+test("Claude PAT execution args use the token value for direct process execution", () => {
   const [command] = buildInstallCommands({
     client: "claude",
     mcpUrl: DEFAULT_MCP_URL,
-    tokenEnv: "TOKEN"
+    tokenEnv: "TOKEN",
+    pat: true
   });
 
-  const args = executionArgs(command, { tokenEnv: "TOKEN" }, { TOKEN: "plpat_secret" });
+  const args = executionArgs(command, { tokenEnv: "TOKEN", pat: true }, { TOKEN: "plpat_secret" });
 
   assert.ok(args.includes("Authorization: Bearer plpat_secret"));
+});
+
+test("builds Codex OAuth login command", () => {
+  const [command] = buildLoginCommands({ client: "codex" });
+
+  assert.equal(command.command, "codex");
+  assert.deepEqual(command.args, [
+    "mcp",
+    "login",
+    "protoline",
+    "--scopes",
+    DEFAULT_OAUTH_SCOPES.join(",")
+  ]);
+});
+
+test("login dry run installs and prints OAuth login next steps", () => {
+  const result = run(parseArgs(["login", "--client", "codex", "--dry-run", "--no-skills"]));
+
+  assert.equal(result.code, 0);
+  assert.match(result.stdout, /codex mcp add protoline --url/);
+  assert.match(result.stdout, /codex mcp login protoline --scopes/);
+  assert.doesNotMatch(result.stdout, /plpat_/);
 });
 
 test("redacts token values from command output", () => {
