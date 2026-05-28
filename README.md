@@ -20,11 +20,13 @@ not make skills or slash commands mandatory.
 
 ## Commands
 
-- `protoline login`: open the token page and print setup instructions.
-- `protoline login --no-open`: print setup instructions without opening a browser.
-- `protoline install`: print client-specific MCP install commands.
-- `protoline install --execute`: run the client-specific MCP install commands.
-- `protoline doctor`: check common local setup state.
+Run commands through `npx -y @protoline/protoline <command>`.
+
+- `login`: open the token page and print setup instructions.
+- `login --no-open`: print setup instructions without opening a browser.
+- `install`: add the hosted Protoline MCP server to the selected client config.
+- `install --dry-run`: print the client-specific MCP install commands without running them.
+- `doctor`: check common local setup state.
 
 Skills and client slash commands are optional. Protoline still works through MCP
 tools when no companion skill is installed.

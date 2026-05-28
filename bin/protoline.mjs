@@ -7,19 +7,20 @@ import { pathToFileURL } from "node:url";
 export const DEFAULT_MCP_URL = "https://app.protoline.ai/api/mcp";
 export const DEFAULT_TOKEN_URL = "https://app.protoline.ai/profile#access-tokens";
 export const DEFAULT_TOKEN_ENV = "PROTOLINE_MCP_TOKEN";
+export const DEFAULT_INVOCATION = "npx -y @protoline/protoline";
 
 const helpText = `Protoline agent setup
 
 Usage:
   protoline login [--no-open]
-  protoline install [--client codex|claude|all] [--execute]
+  protoline install [--client codex|claude|all] [--dry-run]
   protoline doctor
   protoline help
 
 Common path:
-  1. protoline login
+  1. ${DEFAULT_INVOCATION} login
   2. export PROTOLINE_MCP_TOKEN="plpat_..."
-  3. protoline install --client codex
+  3. ${DEFAULT_INVOCATION} install --client codex
 
 Notes:
   - Protoline MCP is hosted at ${DEFAULT_MCP_URL}
@@ -31,7 +32,8 @@ export function parseArgs(argv) {
   const options = {
     command,
     client: "all",
-    execute: false,
+    execute: true,
+    dryRun: false,
     open: true,
     tokenEnv: DEFAULT_TOKEN_ENV,
     mcpUrl: DEFAULT_MCP_URL,
@@ -54,6 +56,12 @@ export function parseArgs(argv) {
 
     if (arg === "--execute") {
       options.execute = true;
+      continue;
+    }
+
+    if (arg === "--dry-run") {
+      options.dryRun = true;
+      options.execute = false;
       continue;
     }
 
@@ -163,7 +171,7 @@ export function executionArgs(entry, options, env = process.env) {
   const token = env[options.tokenEnv];
 
   if (!token) {
-    throw new Error(`${options.tokenEnv} must be set before running install --execute for Claude.`);
+    throw new Error(`${options.tokenEnv} must be set before installing Protoline MCP for Claude.`);
   }
 
   return entry.args.map((arg) =>
@@ -198,8 +206,8 @@ export function loginMessage(options) {
     `  export ${options.tokenEnv}="plpat_..."`,
     "",
     "After that, run:",
-    "  protoline install --client codex",
-    "  protoline install --client claude"
+    `  ${DEFAULT_INVOCATION} install --client codex`,
+    `  ${DEFAULT_INVOCATION} install --client claude`
   ].join("\n");
 }
 
@@ -215,6 +223,18 @@ export function doctorReport(options, env = process.env) {
   }
 
   return lines.join("\n");
+}
+
+export function tokenSetupLines(options, env = process.env) {
+  if (env[options.tokenEnv]) {
+    return [`${options.tokenEnv} is set.`];
+  }
+
+  return [
+    `Set ${options.tokenEnv} before adding Protoline MCP:`,
+    `  export ${options.tokenEnv}="plpat_..."`,
+    `If you already set it, make sure it is exported in this shell.`
+  ];
 }
 
 export function run(options) {
@@ -244,17 +264,16 @@ export function run(options) {
 function install(options) {
   const commands = buildInstallCommands(options);
 
-  if (!options.execute) {
+  if (options.dryRun || !options.execute) {
     return {
       code: 0,
       stdout: [
-        `Set ${options.tokenEnv} before adding Protoline MCP:`,
-        `  export ${options.tokenEnv}="plpat_..."`,
+        ...tokenSetupLines(options),
         "",
         "Run these commands:",
         ...commands.map((entry) => `  ${entry.display}`),
         "",
-        "Add --execute to run the commands from this CLI."
+        "Run without --dry-run to install from this CLI."
       ].join("\n")
     };
   }
