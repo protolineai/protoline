@@ -1,6 +1,6 @@
 {
   "name": "@protoline/protoline",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Protoline agent setup CLI.",
   "type": "module",
   "bin": {
@@ -16,6 +16,7 @@
   "homepage": "https://docs.protoline.ai/integrations/mcp/",
   "files": [
     "bin",
+    "skills",
     "README.md",
     "LICENSE"
   ],

@@ -1,11 +1,24 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import {
+  CLAUDE_SKILL_NAME,
+  CODEX_SKILL_NAME,
   DEFAULT_INVOCATION,
   DEFAULT_MCP_URL,
+  agentSkillPreviewLines,
   buildInstallCommands,
+  claudeSkillPath,
+  claudeSkillPreviewLines,
+  codexSkillPath,
+  codexSkillPreviewLines,
   doctorReport,
   executionArgs,
+  installAgentSkills,
+  installClaudeSkill,
+  installCodexSkill,
   isEntrypointPath,
   loginMessage,
   parseArgs,
@@ -47,6 +60,7 @@ test("parses install options", () => {
   assert.equal(options.client, "codex");
   assert.equal(options.execute, true);
   assert.equal(options.dryRun, false);
+  assert.equal(options.skills, true);
   assert.equal(options.tokenEnv, "TOKEN");
   assert.equal(options.mcpUrl, "https://example.test/mcp");
 });
@@ -57,6 +71,15 @@ test("install executes by default and supports dry run", () => {
   const options = parseArgs(["install", "--dry-run"]);
   assert.equal(options.execute, false);
   assert.equal(options.dryRun, true);
+});
+
+test("install supports disabling skills", () => {
+  const options = parseArgs(["install", "--no-skills"]);
+
+  assert.equal(options.skills, false);
+  assert.deepEqual(codexSkillPreviewLines(options), []);
+  assert.deepEqual(claudeSkillPreviewLines(options), []);
+  assert.deepEqual(agentSkillPreviewLines(options), []);
 });
 
 test("login opens the browser by default and supports no-open", () => {
@@ -109,7 +132,64 @@ test("install dry run prints commands without executing them", () => {
     result.stdout,
     /codex mcp add protoline --url https:\/\/example\.test\/mcp --bearer-token-env-var TOKEN/
   );
+  assert.match(result.stdout, /Install local Codex skill:/);
   assert.match(result.stdout, /Run without --dry-run to install from this CLI\./);
+});
+
+test("install dry run includes Claude skill for Claude client", () => {
+  const result = run(parseArgs(["install", "--client", "claude", "--dry-run"]));
+
+  assert.equal(result.code, 0);
+  assert.match(result.stdout, /Install local Claude skill:/);
+  assert.doesNotMatch(result.stdout, /Install local Codex skill:/);
+});
+
+test("codex skill installs into CODEX_HOME", () => {
+  const codexHome = mkdtempSync(join(tmpdir(), "protoline-codex-home-"));
+  const env = { CODEX_HOME: codexHome };
+  const result = installCodexSkill({ client: "codex", skills: true }, env);
+  const targetPath = codexSkillPath(env);
+
+  assert.equal(targetPath, join(codexHome, "skills", CODEX_SKILL_NAME, "SKILL.md"));
+  assert.match(result, new RegExp(targetPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.match(readFileSync(targetPath, "utf8"), /name: protoline/);
+});
+
+test("claude skill installs into CLAUDE_HOME", () => {
+  const claudeHome = mkdtempSync(join(tmpdir(), "protoline-claude-home-"));
+  const env = { CLAUDE_HOME: claudeHome };
+  const result = installClaudeSkill({ client: "claude", skills: true }, env);
+  const targetPath = claudeSkillPath(env);
+
+  assert.equal(targetPath, join(claudeHome, "skills", CLAUDE_SKILL_NAME, "SKILL.md"));
+  assert.match(result, new RegExp(targetPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.match(readFileSync(targetPath, "utf8"), /argument-hint: "\[new\|publish\|promote\|login\]"/);
+});
+
+test("all client skill installation writes both agent skills", () => {
+  const codexHome = mkdtempSync(join(tmpdir(), "protoline-codex-home-"));
+  const claudeHome = mkdtempSync(join(tmpdir(), "protoline-claude-home-"));
+  const results = installAgentSkills(
+    { client: "all", skills: true },
+    { CODEX_HOME: codexHome, CLAUDE_HOME: claudeHome }
+  );
+
+  assert.equal(results.length, 2);
+  assert.match(readFileSync(join(codexHome, "skills", "protoline", "SKILL.md"), "utf8"), /name: protoline/);
+  assert.match(readFileSync(join(claudeHome, "skills", "protoline", "SKILL.md"), "utf8"), /name: protoline/);
+});
+
+test("codex skill installation can be skipped", () => {
+  const codexHome = mkdtempSync(join(tmpdir(), "protoline-codex-home-"));
+  const claudeHome = mkdtempSync(join(tmpdir(), "protoline-claude-home-"));
+  const result = installCodexSkill({ client: "codex", skills: false }, { CODEX_HOME: codexHome });
+  const claudeResult = installClaudeSkill(
+    { client: "claude", skills: false },
+    { CLAUDE_HOME: claudeHome }
+  );
+
+  assert.equal(result, null);
+  assert.equal(claudeResult, null);
 });
 
 test("install dry run reports exported token state", () => {
@@ -143,6 +223,8 @@ test("doctor reports token env state", () => {
   );
 
   assert.match(text, /TOKEN: set/);
+  assert.match(text, /codex skill: /);
+  assert.match(text, /claude skill: /);
 });
 
 test("Claude execution args use the token value for direct process execution", () => {

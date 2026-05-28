@@ -1,19 +1,24 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
-import { realpathSync } from "node:fs";
-import { platform } from "node:os";
+import { dirname, join } from "node:path";
+import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { homedir, platform } from "node:os";
 import { pathToFileURL } from "node:url";
 
 export const DEFAULT_MCP_URL = "https://app.protoline.ai/api/mcp";
 export const DEFAULT_TOKEN_URL = "https://app.protoline.ai/profile#access-tokens";
 export const DEFAULT_TOKEN_ENV = "PROTOLINE_MCP_TOKEN";
 export const DEFAULT_INVOCATION = "npx -y @protoline/protoline";
+export const CODEX_SKILL_NAME = "protoline";
+export const CLAUDE_SKILL_NAME = "protoline";
+
+const CODEX_SKILL_SOURCE_URL = new URL("../skills/protoline/SKILL.md", import.meta.url);
 
 const helpText = `Protoline agent setup
 
 Usage:
   protoline login [--no-open]
-  protoline install [--client codex|claude|all] [--dry-run]
+  protoline install [--client codex|claude|all] [--dry-run] [--no-skills]
   protoline doctor
   protoline help
 
@@ -24,7 +29,7 @@ Common path:
 
 Notes:
   - Protoline MCP is hosted at ${DEFAULT_MCP_URL}
-  - Skills and client slash commands are optional; MCP tools still work without them.
+  - Codex and Claude install small local skills by default; MCP tools still work without them.
 `;
 
 export function parseArgs(argv) {
@@ -34,6 +39,7 @@ export function parseArgs(argv) {
     client: "all",
     execute: true,
     dryRun: false,
+    skills: true,
     open: true,
     tokenEnv: DEFAULT_TOKEN_ENV,
     mcpUrl: DEFAULT_MCP_URL,
@@ -62,6 +68,16 @@ export function parseArgs(argv) {
     if (arg === "--dry-run") {
       options.dryRun = true;
       options.execute = false;
+      continue;
+    }
+
+    if (arg === "--skills") {
+      options.skills = true;
+      continue;
+    }
+
+    if (arg === "--no-skills") {
+      options.skills = false;
       continue;
     }
 
@@ -222,6 +238,9 @@ export function doctorReport(options, env = process.env) {
     lines.push(`${client}: ${commandExists(client) ? "found" : "not found"}`);
   }
 
+  lines.push(`codex skill: ${existsSync(codexSkillPath(env)) ? "installed" : "not installed"}`);
+  lines.push(`claude skill: ${existsSync(claudeSkillPath(env)) ? "installed" : "not installed"}`);
+
   return lines.join("\n");
 }
 
@@ -235,6 +254,81 @@ export function tokenSetupLines(options, env = process.env) {
     `  export ${options.tokenEnv}="plpat_..."`,
     `If you already set it, make sure it is exported in this shell.`
   ];
+}
+
+export function codexSkillPath(env = process.env) {
+  const codexHome = env.CODEX_HOME || join(homedir(), ".codex");
+  return join(codexHome, "skills", CODEX_SKILL_NAME, "SKILL.md");
+}
+
+export function claudeSkillPath(env = process.env) {
+  const claudeHome = env.CLAUDE_HOME || join(homedir(), ".claude");
+  return join(claudeHome, "skills", CLAUDE_SKILL_NAME, "SKILL.md");
+}
+
+export function shouldInstallCodexSkill(options) {
+  return Boolean(options.skills) && selectedClients(options.client).includes("codex");
+}
+
+export function shouldInstallClaudeSkill(options) {
+  return Boolean(options.skills) && selectedClients(options.client).includes("claude");
+}
+
+export function codexSkillPreviewLines(options, env = process.env) {
+  if (!shouldInstallCodexSkill(options)) {
+    return [];
+  }
+
+  return [
+    "Install local Codex skill:",
+    `  ${codexSkillPath(env)}`,
+    "Restart Codex after installing or updating skills."
+  ];
+}
+
+export function claudeSkillPreviewLines(options, env = process.env) {
+  if (!shouldInstallClaudeSkill(options)) {
+    return [];
+  }
+
+  return [
+    "Install local Claude skill:",
+    `  ${claudeSkillPath(env)}`,
+    "Restart Claude Code if the new skill does not appear."
+  ];
+}
+
+export function agentSkillPreviewLines(options, env = process.env) {
+  return [
+    ...codexSkillPreviewLines(options, env),
+    ...claudeSkillPreviewLines(options, env)
+  ];
+}
+
+export function installCodexSkill(options, env = process.env) {
+  if (!shouldInstallCodexSkill(options)) {
+    return null;
+  }
+
+  const targetPath = codexSkillPath(env);
+  mkdirSync(dirname(targetPath), { recursive: true });
+  writeFileSync(targetPath, readFileSync(CODEX_SKILL_SOURCE_URL, "utf8"));
+  return `Codex skill installed: ${targetPath}\nRestart Codex after installing or updating skills.`;
+}
+
+export function installClaudeSkill(options, env = process.env) {
+  if (!shouldInstallClaudeSkill(options)) {
+    return null;
+  }
+
+  const targetPath = claudeSkillPath(env);
+  mkdirSync(dirname(targetPath), { recursive: true });
+  writeFileSync(targetPath, readFileSync(CODEX_SKILL_SOURCE_URL, "utf8"));
+  return `Claude skill installed: ${targetPath}\nRestart Claude Code if the new skill does not appear.`;
+}
+
+export function installAgentSkills(options, env = process.env) {
+  return [installCodexSkill(options, env), installClaudeSkill(options, env)].filter(Boolean);
 }
 
 export function run(options) {
@@ -263,6 +357,7 @@ export function run(options) {
 
 function install(options) {
   const commands = buildInstallCommands(options);
+  const skillPreviewLines = agentSkillPreviewLines(options);
 
   if (options.dryRun || !options.execute) {
     return {
@@ -272,6 +367,7 @@ function install(options) {
         "",
         "Run these commands:",
         ...commands.map((entry) => `  ${entry.display}`),
+        ...(skillPreviewLines.length ? ["", ...skillPreviewLines] : []),
         "",
         "Run without --dry-run to install from this CLI."
       ].join("\n")
@@ -293,6 +389,7 @@ function install(options) {
   }
 
   const outputs = [];
+  outputs.push(...installAgentSkills(options));
 
   for (const entry of executableCommands) {
     const result = spawnSync(entry.command, entry.args, {
